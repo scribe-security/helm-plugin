@@ -10,4 +10,4 @@ echo "Installing helm-sudo v${VERSION} ..."
 
 echo 
 echo "helm-sudo ${VERSION} is installed."
-echo "See https://github.com/cloudogu/helm-sudo for help getting started!"
+echo "See https://github.com/scribe-security/helm-valint-plugin for help getting started!"

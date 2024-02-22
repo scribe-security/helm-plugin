@@ -95,10 +95,8 @@ done
 
 
 get_chart_version() {  
-  # Run the command to get chart version
   local chart_version=$($HELM_BIN search repo $CHART_NAME 2>/dev/null |  awk -v chart_name="$CHART_NAME" '$1 "~/"chart_name"/"{print $2}' | tail -1)
 
-  # Check if the command was successful
   if [ $? -eq 0 ] && [ "$chart_version" != "results" ]; then
     chart_version=${chart_version//\"}
     echo "$chart_version"
@@ -114,10 +112,8 @@ get_chart_version() {
 }
 
 get_app_version() {  
-  # Run the command to get chart version
   local app_version=$($HELM_BIN search repo $CHART_NAME 2>/dev/null |  awk -v chart_name="$CHART_NAME" '$1 "~/"app_name"/"{print $3}' | tail -1)
 
-  # Check if the command was successful
   if [ $? -eq 0 ] && [ "$app_version" != "found" ]; then
     app_version=${app_version//\"}
     echo "$app_version"
@@ -132,19 +128,14 @@ get_app_version() {
 }
 
 get_chart_name() {
-  # Run the command to get chart name
   local chart_name=$($HELM_BIN search repo $CHART_NAME 2>/dev/null | awk -v chart_name="$CHART_NAME" '$1 "~/"chart_name"/"{print $1}')
 
-  # Check if the command was successful
   if [ $? -eq 0 ] && [ "$chart_name" != "No" ]; then
-    # Remove double quotes from chart_name
     CHART_NAME=${CHART_NAME//\"}
     echo "$CHART_NAME"
   else
-    # Fall back to reading from Chart.yaml
     chart_name=$(cat "$CHART_NAME/Chart.yaml" 2>/dev/null | grep "^name:" | awk '{print $2}')
     if [ $? -eq 0 ]; then
-      # Remove double quotes from chart_name
       chart_name=${chart_name//\"}
       echo "$chart_name"
     else
