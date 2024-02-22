@@ -1,0 +1,31 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+**/.tmp
+**/snapshot
+**/dist
+**/.vscode
+licenses.tar.gz
+*.env
+**/_tmp
+**/_temp
+# Dependency directories (remove the comment below to include it)
+# vendor/
+**/azure
+**/git_*
+**/testing_mock_repo
+**/sub
+**/policies_tmp_*
+**/bitbucket
+**/github_actions*
+**/azure-task
+**/circleci
