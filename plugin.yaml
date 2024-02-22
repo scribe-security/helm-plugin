@@ -1,0 +1,10 @@
+name: "valint"
+version: "0.0.1"
+usage: "Collect evidence from helm charts with Valint"
+description: |-
+  "Helm plugin that uses Valint to Collect SBOM and SLSA evidence from helm charts images"
+command: "$HELM_PLUGINS/helm-valint-plugin/run.sh"
+ignoreFlags: false
+hooks:
+  install: "curl -sSfL https://get.scribesecurity.com/install.sh | sh -s -- -b $HELM_PLUGIN_DIR"
+  update: "curl -sSfL https://get.scribesecurity.com/install.sh | sh -s -- -b $HELM_PLUGIN_DIR"

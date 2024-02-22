@@ -1,0 +1,5 @@
+name: valint
+flags:
+- components
+- glob
+- skip-slsa
