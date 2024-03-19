@@ -65,7 +65,16 @@ while [ "$#" -gt 0 ]; do
         BOM_FLAGS+=" $1 $2"    
         shift 2
       ;;
-
+    "--format="*)
+        FORMAT_FOUND=true
+        FLAGS+=" $1"
+        shift    
+      ;;
+    "--format"*)
+        FORMAT_FOUND=true
+        FLAGS+=" $1 $2"
+        shift 2
+      ;;
     "--"*"="*)
         FLAGS+=" $1"
         shift
@@ -148,6 +157,8 @@ CHART_VERSION=$(get_chart_version)
 APP_VERSION=$(get_app_version)
 CHART_DEFINED_NAME=$(get_chart_name)
 
+
+
 if [ -z "$CHART_VERSION" ]; then
   FLAGS+=" --label chart-version=$CHART_VERSION"
 fi
@@ -158,6 +169,11 @@ fi
 
 if [ -z "$CHART_NAME" ]; then
   FLAGS+=" --label chart-name=$CHART_NAME"
+fi
+
+if [ -z "$FORMAT_FOUND" ]; then
+  echo "Adding format '$FORMAT_FOUND'" 
+  FLAGS+=" --format statement"
 fi
 
 if [ -z "$PRODUCT_KEY_FOUND" ]; then
