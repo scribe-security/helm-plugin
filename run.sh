@@ -14,7 +14,7 @@ TEMPLATE_FLAGS=""
 PROVIDED_CHART_VERSION=""
 
 if [[ -z "$TMP_DIR" ]]; then
-  TMP_DIR="/home/mikey/scribe/helm-valint-plugin/.tmp"
+  TMP_DIR=".tmp"
 fi
 
 # Loop through the arguments
@@ -80,12 +80,8 @@ while [ "$#" -gt 0 ]; do
         FLAGS+=" $1 $2"
         shift 2
       ;;
-    "--version="*)
-        PROVIDED_CHART_VERSION="$2"
-        shift 1
-      ;;
     "--version"*)
-        PROVIDED_CHART_VERSION="--version $2"
+        PROVIDED_CHART_VERSION="$2"
         shift 2
       ;;
     "--"*"="*)
@@ -115,6 +111,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+
+echo "######### PROVIDED_CHART_VERSION $PROVIDED_CHART_VERSION"
 
 get_chart_version() {  
   local chart_version=$($HELM_BIN search repo $CHART_NAME 2>/dev/null |  awk -v chart_name="$CHART_NAME" '$1 "~/"chart_name"/"{print $2}' | tail -1)
@@ -168,10 +166,12 @@ get_chart_name() {
 
 if [[ $CHART_NAME == oci://* ]]; then
   echo "Early Pull setting"
-  $HELM_BIN pull $CHART_NAME $PROVIDED_CHART_VERSION --untar --untardir $TMP_DIR
+  rm -rf $TMP_DIR
+  $HELM_BIN pull $CHART_NAME --version $PROVIDED_CHART_VERSION --untar --untardir $TMP_DIR
   # CHART_NAME TAG oci://image:<tag>
+  OCI_NAME=$(basename "$CHART_NAME")
   APP_VERSION=$PROVIDED_CHART_VERSION
-  CHART_NAME=$TMP_DIR #Overwrite name with local dir.
+  CHART_NAME=$TMP_DIR/$OCI_NAME #Overwrite name with local dir.
   CHART_VERSION=$PROVIDED_CHART_VERSION
 else
   CHART_VERSION=$(get_chart_version)
@@ -222,7 +222,7 @@ if [ "$ENABLE_SLSA" = false ]; then
   echo "Enabling SLSA provenance creation for images..."
 fi
 
-echo "Collect evidence from '$CHART_NAME', With App versin '$APP_VERSION' Chart version '$CHART_VERSION'..."
+echo "Collect evidence from '$CHART_NAME', With App version '$APP_VERSION' Chart version '$CHART_VERSION'..."
 
 declare -a IMAGES=()
 readarray -t IMAGES < <($HELM_BIN template $CHART_NAME $TEMPLATE_FLAGS | grep image: | sed -e 's/[ ]*image:[ ]*//' -e 's/"//g' -e "s/'//g" | sort -u)
