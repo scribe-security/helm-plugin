@@ -3,7 +3,7 @@ echo "Valint Helm Plugin"
 
 # env
 # ${HELM_BIN} list
-# set -x
+set -x
 VALINT_BIN="${HELM_PLUGIN_DIR}/valint"
 
 # Initialize FLAGS as an empty string
@@ -11,6 +11,11 @@ FLAGS=""
 BOM_FLAGS=""
 CHART_NAME=""
 TEMPLATE_FLAGS=""
+PROVIDED_CHART_VERSION=""
+
+if [[ -z "$TMP_DIR" ]]; then
+  TMP_DIR="/home/mikey/scribe/helm-valint-plugin/.tmp"
+fi
 
 # Loop through the arguments
 while [ "$#" -gt 0 ]; do
@@ -73,6 +78,14 @@ while [ "$#" -gt 0 ]; do
     "--format"*)
         FORMAT_FOUND=true
         FLAGS+=" $1 $2"
+        shift 2
+      ;;
+    "--version="*)
+        PROVIDED_CHART_VERSION="$2"
+        shift 1
+      ;;
+    "--version"*)
+        PROVIDED_CHART_VERSION="--version $2"
         shift 2
       ;;
     "--"*"="*)
@@ -153,9 +166,18 @@ get_chart_name() {
   fi
 }
 
-CHART_VERSION=$(get_chart_version)
-APP_VERSION=$(get_app_version)
-CHART_DEFINED_NAME=$(get_chart_name)
+if [[ $CHART_NAME == oci://* ]]; then
+  echo "Early Pull setting"
+  $HELM_BIN pull $CHART_NAME $PROVIDED_CHART_VERSION --untar --untardir $TMP_DIR
+  # CHART_NAME TAG oci://image:<tag>
+  APP_VERSION=$PROVIDED_CHART_VERSION
+  CHART_NAME=$TMP_DIR #Overwrite name with local dir.
+  CHART_VERSION=$PROVIDED_CHART_VERSION
+else
+  CHART_VERSION=$(get_chart_version)
+  APP_VERSION=$(get_app_version)
+  CHART_DEFINED_NAME=$(get_chart_name)
+fi 
 
 
 
@@ -188,7 +210,12 @@ fi
 
 if [ "$PULL" = true ]; then
   echo "Pulling chart $CHART_NAME to $TMP_DIR..."
-  $HELM_BIN pull $CHART_NAME $TMP_DIR
+  if [[ $CHART_NAME == oci://* ]]; then
+    echo "No need to PULL again FOR OCI"
+    # $HELM_BIN pull $CHART_NAME $PROVIDED_CHART_VERSION --untar --untardir $TMP_DIR
+  else
+    $HELM_BIN pull $CHART_NAME $TMP_DIR
+  fi
 fi
 
 if [ "$ENABLE_SLSA" = false ]; then
