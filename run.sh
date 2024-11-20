@@ -111,9 +111,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-
-echo "######### PROVIDED_CHART_VERSION $PROVIDED_CHART_VERSION"
-
 get_chart_version() {  
   local chart_version=$($HELM_BIN search repo $CHART_NAME 2>/dev/null |  awk -v chart_name="$CHART_NAME" '$1 "~/"chart_name"/"{print $2}' | tail -1)
 
