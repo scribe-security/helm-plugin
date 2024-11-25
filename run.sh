@@ -3,7 +3,7 @@ echo "Valint Helm Plugin"
 
 # env
 # ${HELM_BIN} list
-set -x
+# set -x
 VALINT_BIN="${HELM_PLUGIN_DIR}/valint"
 
 # Initialize FLAGS as an empty string
@@ -12,9 +12,11 @@ BOM_FLAGS=""
 CHART_NAME=""
 TEMPLATE_FLAGS=""
 PROVIDED_CHART_VERSION=""
+SKIP_PULL=false
 
 if [[ -z "$TMP_DIR" ]]; then
   TMP_DIR=".tmp"
+  mkdir -p .tmp
 fi
 
 # Loop through the arguments
@@ -24,6 +26,10 @@ while [ "$#" -gt 0 ]; do
     "--glob")
       # Handle --glob flag
     #   FLAGS+=" --glob"
+      ;;
+    "--dry-run")
+        DRY_RUN=true
+        shift
       ;;
     "--skip-pull")
         SKIP_PULL=true
@@ -70,7 +76,7 @@ while [ "$#" -gt 0 ]; do
         BOM_FLAGS+=" $1 $2"    
         shift 2
       ;;
-    "--format="*)
+    "-o"|"--format="*)
         FORMAT_FOUND=true
         FLAGS+=" $1"
         shift    
@@ -122,8 +128,6 @@ get_chart_version() {
     if [ $? -eq 0 ]; then
       chart_version=${chart_version//\"}
       echo "$chart_version"
-    else
-      echo ""
     fi 
   fi
 }
@@ -225,24 +229,55 @@ declare -a IMAGES=()
 readarray -t IMAGES < <($HELM_BIN template $CHART_NAME $TEMPLATE_FLAGS | grep image: | sed -e 's/[ ]*image:[ ]*//' -e 's/"//g' -e "s/'//g" | sort -u)
 
 echo "-------------------------------------"
+
+accessible_images=()
 if [ "$SKIP_PULL" = false ]; then
+  echo "Prepulling images..."
   for m in "${IMAGES[@]}"; do
-    if command -v docker &> /dev/null; then
-      echo "Prepull images"
-      docker pull $m | true
+    if command -v docker &>/dev/null; then
+      # echo "Checking manifest for '$m'..."
+      if docker manifest inspect "$m" >/dev/null 2>&1; then
+        echo "Manifest found for '$m'. Attempting to pull..."
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "[dry-run] docker pull $m"
+        else
+          if ! docker pull "$m" >/dev/null 2>&1; then
+            echo "Failed to pull image '$m'."
+          else
+            echo "Successfully pulled '$m'."
+            accessible_images+=("$m")  # Proper array addition with quotes
+          fi
+        fi
+      else
+        echo "Manifest not found for '$m'. Skipping pull."
+      fi
+    else
+      echo "Docker CLI not found. Skipping pre-pull."
+      break
     fi
+
+    echo "-------------- PRE PULL ----------------"
   done
-fi 
+fi
+
+# Replace IMAGES with accessible_images if non-empty
+if [ "${#accessible_images[@]}" -gt 0 ]; then
+  IMAGES=("${accessible_images[@]}")
+fi
 
 # Loop through IMAGES array
 for m in "${IMAGES[@]}"; do
   # Run the command using VALINT_BIN and FLAGS
   echo "Collect evidence for '$m'..."
   echo valint bom "$m" $FLAGS $BOM_FLAGS
-  "$VALINT_BIN" bom "$m" $FLAGS $BOM_FLAGS | true
-  if [ "$ENABLE_SLSA" = true ]; then
-    "$VALINT_BIN" slsa "$m" $FLAGS  | true
+  if [[ "$DRY_RUN" == "true" ]]; then
+      echo "[dry-run] "$VALINT_BIN" bom "$m" $FLAGS $BOM_FLAGS"
+  else
+    "$VALINT_BIN" bom "$m" $FLAGS $BOM_FLAGS | true
+    if [ "$ENABLE_SLSA" = true ]; then
+      "$VALINT_BIN" slsa "$m" $FLAGS  | true
+    fi
   fi
-  echo "-------------------------------------"
+  echo "-------------- VALINT ----------------"
 done
 
