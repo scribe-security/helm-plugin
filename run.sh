@@ -11,6 +11,13 @@ FLAGS=""
 BOM_FLAGS=""
 CHART_NAME=""
 TEMPLATE_FLAGS=""
+PROVIDED_CHART_VERSION=""
+SKIP_PULL=false
+
+if [[ -z "$TMP_DIR" ]]; then
+  TMP_DIR=".tmp"
+  mkdir -p .tmp
+fi
 
 # Loop through the arguments
 while [ "$#" -gt 0 ]; do
@@ -19,6 +26,10 @@ while [ "$#" -gt 0 ]; do
     "--glob")
       # Handle --glob flag
     #   FLAGS+=" --glob"
+      ;;
+    "--dry-run")
+        DRY_RUN=true
+        shift
       ;;
     "--skip-pull")
         SKIP_PULL=true
@@ -65,7 +76,7 @@ while [ "$#" -gt 0 ]; do
         BOM_FLAGS+=" $1 $2"    
         shift 2
       ;;
-    "--format="*)
+    "-o"|"--format="*)
         FORMAT_FOUND=true
         FLAGS+=" $1"
         shift    
@@ -73,6 +84,10 @@ while [ "$#" -gt 0 ]; do
     "--format"*)
         FORMAT_FOUND=true
         FLAGS+=" $1 $2"
+        shift 2
+      ;;
+    "--version"*)
+        PROVIDED_CHART_VERSION="$2"
         shift 2
       ;;
     "--"*"="*)
@@ -102,7 +117,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-
 get_chart_version() {  
   local chart_version=$($HELM_BIN search repo $CHART_NAME 2>/dev/null |  awk -v chart_name="$CHART_NAME" '$1 "~/"chart_name"/"{print $2}' | tail -1)
 
@@ -114,8 +128,6 @@ get_chart_version() {
     if [ $? -eq 0 ]; then
       chart_version=${chart_version//\"}
       echo "$chart_version"
-    else
-      echo ""
     fi 
   fi
 }
@@ -153,9 +165,20 @@ get_chart_name() {
   fi
 }
 
-CHART_VERSION=$(get_chart_version)
-APP_VERSION=$(get_app_version)
-CHART_DEFINED_NAME=$(get_chart_name)
+if [[ $CHART_NAME == oci://* ]]; then
+  echo "Early Pull setting"
+  rm -rf $TMP_DIR
+  $HELM_BIN pull $CHART_NAME --version $PROVIDED_CHART_VERSION --untar --untardir $TMP_DIR
+  # CHART_NAME TAG oci://image:<tag>
+  OCI_NAME=$(basename "$CHART_NAME")
+  APP_VERSION=$PROVIDED_CHART_VERSION
+  CHART_NAME=$TMP_DIR/$OCI_NAME #Overwrite name with local dir.
+  CHART_VERSION=$PROVIDED_CHART_VERSION
+else
+  CHART_VERSION=$(get_chart_version)
+  APP_VERSION=$(get_app_version)
+  CHART_DEFINED_NAME=$(get_chart_name)
+fi 
 
 
 
@@ -188,37 +211,73 @@ fi
 
 if [ "$PULL" = true ]; then
   echo "Pulling chart $CHART_NAME to $TMP_DIR..."
-  $HELM_BIN pull $CHART_NAME $TMP_DIR
+  if [[ $CHART_NAME == oci://* ]]; then
+    echo "No need to PULL again FOR OCI"
+    # $HELM_BIN pull $CHART_NAME $PROVIDED_CHART_VERSION --untar --untardir $TMP_DIR
+  else
+    $HELM_BIN pull $CHART_NAME $TMP_DIR
+  fi
 fi
 
 if [ "$ENABLE_SLSA" = false ]; then
   echo "Enabling SLSA provenance creation for images..."
 fi
 
-echo "Collect evidence from '$CHART_NAME', With App versin '$APP_VERSION' Chart version '$CHART_VERSION'..."
+echo "Collect evidence from '$CHART_NAME', With App version '$APP_VERSION' Chart version '$CHART_VERSION'..."
 
 declare -a IMAGES=()
 readarray -t IMAGES < <($HELM_BIN template $CHART_NAME $TEMPLATE_FLAGS | grep image: | sed -e 's/[ ]*image:[ ]*//' -e 's/"//g' -e "s/'//g" | sort -u)
 
 echo "-------------------------------------"
+
+accessible_images=()
 if [ "$SKIP_PULL" = false ]; then
+  echo "Prepulling images..."
   for m in "${IMAGES[@]}"; do
-    if command -v docker &> /dev/null; then
-      echo "Prepull images"
-      docker pull $m | true
+    if command -v docker &>/dev/null; then
+      # echo "Checking manifest for '$m'..."
+      if docker manifest inspect "$m" >/dev/null 2>&1; then
+        echo "Manifest found for '$m'. Attempting to pull..."
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "[dry-run] docker pull $m"
+        else
+          if ! docker pull "$m" >/dev/null 2>&1; then
+            echo "Failed to pull image '$m'."
+          else
+            echo "Successfully pulled '$m'."
+            accessible_images+=("$m")  # Proper array addition with quotes
+          fi
+        fi
+      else
+        echo "Manifest not found for '$m'. Skipping pull."
+      fi
+    else
+      echo "Docker CLI not found. Skipping pre-pull."
+      break
     fi
+
+    echo "-------------- PRE PULL ----------------"
   done
-fi 
+fi
+
+# Replace IMAGES with accessible_images if non-empty
+if [ "${#accessible_images[@]}" -gt 0 ]; then
+  IMAGES=("${accessible_images[@]}")
+fi
 
 # Loop through IMAGES array
 for m in "${IMAGES[@]}"; do
   # Run the command using VALINT_BIN and FLAGS
   echo "Collect evidence for '$m'..."
   echo valint bom "$m" $FLAGS $BOM_FLAGS
-  "$VALINT_BIN" bom "$m" $FLAGS $BOM_FLAGS | true
-  if [ "$ENABLE_SLSA" = true ]; then
-    "$VALINT_BIN" slsa "$m" $FLAGS  | true
+  if [[ "$DRY_RUN" == "true" ]]; then
+      echo "[dry-run] "$VALINT_BIN" bom "$m" $FLAGS $BOM_FLAGS"
+  else
+    "$VALINT_BIN" bom "$m" $FLAGS $BOM_FLAGS | true
+    if [ "$ENABLE_SLSA" = true ]; then
+      "$VALINT_BIN" slsa "$m" $FLAGS  | true
+    fi
   fi
-  echo "-------------------------------------"
+  echo "-------------- VALINT ----------------"
 done
 
